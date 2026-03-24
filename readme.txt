@@ -218,6 +218,10 @@ you want to use those features — the Phase 2 purge works with Cache Purge alon
 
 == Frequently Asked Questions ==
 
+= How do I report a bug or request a feature? =
+
+Open an issue at https://github.com/avanrossum/pb-cache-warmer/issues
+
 = Will this slow down my server? =
 
 The default 300ms delay between requests means a 300-page site takes about two
