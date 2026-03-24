@@ -10,6 +10,13 @@ defined( 'ABSPATH' ) || exit;
  *   written to disk. When pbcw_origin_base is set, requests go directly to
  *   origin (e.g. http://127.0.0.1) with a Host: header, skipping Cloudflare.
  *
+ * Phase 1b — Server page cache purge (run_single only):
+ *   After Phase 1 regenerates CSS, the server-side page cache (FastCGI, WP Rocket,
+ *   etc.) may still hold stale HTML that references old CSS filenames. Purging the
+ *   page cache entry for the URL forces a fresh PHP render on the next browser
+ *   request, so the browser gets HTML that references the newly-generated CSS.
+ *   Hooks into nginx-helper, WP Rocket, LiteSpeed, and W3TC when active.
+ *
  * Phase 2 — Cloudflare cache purge:
  *   Fetches each page HTML from origin (without bypass token, so we get what
  *   the cache actually serves), parses same-domain stylesheet hrefs, then calls
@@ -82,15 +89,27 @@ class PBCW_Warmer {
 	}
 
 	/**
-	 * Warm a single URL through both phases.
-	 * Used for post-save single-page warmup. Does not write to the run log.
+	 * Warm a single URL through all phases.
+	 * Used by the autoheal REST endpoint and post-save warmup.
+	 * Does not write to the run log.
+	 *
+	 * Phase 1b (page cache purge) is included here but not in run() — the full
+	 * run is triggered by cache clear events that already purged page cache. The
+	 * heal path is triggered by a live user hitting a broken page, meaning the
+	 * page cache was NOT purged alongside the CSS files.
 	 */
 	public function run_single( string $url, string $trigger = 'single' ): void {
 		$bypass  = $this->bypass_param();
 		$timeout = (int) ( $this->options['timeout_s'] ?? 45 );
 
+		// Phase 1: force PHP render, regenerate page-builder CSS.
 		$this->fetch_phase1( $url, $bypass, $timeout );
 
+		// Phase 1b: purge server-side page cache so the browser reload gets
+		// fresh HTML with the correct (newly-generated) CSS filenames.
+		$this->purge_page_cache( $url );
+
+		// Phase 2: purge CF's cached copies.
 		$cloudflare = $this->make_cloudflare();
 		if ( $cloudflare->is_configured() ) {
 			$this->run_cf_purge( [ $url ], $timeout, $cloudflare );
@@ -297,6 +316,48 @@ class PBCW_Warmer {
 	}
 
 	// ── Helpers ────────────────────────────────────────────────────────────────
+
+	/**
+	 * Purge the server-side page cache entry for a single URL.
+	 *
+	 * Called after Phase 1 in run_single() so that the browser's post-heal reload
+	 * gets a fresh PHP-rendered page (with correct, newly-generated CSS filenames)
+	 * rather than the stale cached HTML that triggered the heal in the first place.
+	 *
+	 * Hooks into whichever page cache plugin is active. Falls back to a generic
+	 * action (pbcw_purge_page_cache) for custom integrations.
+	 */
+	private function purge_page_cache( string $url ): void {
+		$post_id = url_to_postid( $url );
+
+		// nginx-helper (FastCGI / Redis page cache).
+		if ( isset( $GLOBALS['nginx_helper'] ) && method_exists( $GLOBALS['nginx_helper'], 'purge_url' ) ) {
+			$GLOBALS['nginx_helper']->purge_url( $url );
+		}
+
+		// WP Rocket.
+		if ( $post_id && function_exists( 'rocket_clean_post' ) ) {
+			rocket_clean_post( $post_id );
+		}
+
+		// LiteSpeed Cache.
+		if ( $post_id ) {
+			do_action( 'litespeed_purge_post', $post_id );
+		}
+
+		// W3 Total Cache.
+		if ( function_exists( 'w3tc_flush_url' ) ) {
+			w3tc_flush_url( $url );
+		}
+
+		// WP Super Cache.
+		if ( function_exists( 'wp_cache_post_change' ) && $post_id ) {
+			wp_cache_post_change( $post_id );
+		}
+
+		// Generic escape hatch for anything else.
+		do_action( 'pbcw_purge_page_cache', $url, $post_id );
+	}
 
 	/** Instantiate PBCW_Cloudflare from current settings. */
 	private function make_cloudflare(): PBCW_Cloudflare {
