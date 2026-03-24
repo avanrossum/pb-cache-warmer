@@ -2,21 +2,33 @@
 	'use strict';
 
 	function run() {
-		var links = document.querySelectorAll('link[rel="stylesheet"]');
 		var failed = false;
 
+		// Check regular stylesheets: sheet === null means a network error or non-2xx.
+		// Cross-origin sheets throw SecurityError on .sheet access — they loaded OK.
+		var links = document.querySelectorAll('link[rel="stylesheet"]');
 		for (var i = 0; i < links.length; i++) {
 			try {
-				// sheet === null means the browser attempted to load the stylesheet
-				// but received a network error or non-2xx response.
-				// Cross-origin stylesheets throw a SecurityError on .sheet access —
-				// that means they loaded (just restricted), so we catch and skip.
 				if (links[i].sheet === null) {
 					failed = true;
 					break;
 				}
 			} catch (e) {
 				// Cross-origin, loaded OK.
+			}
+		}
+
+		// Check preloaded stylesheets (Divi Dynamic CSS late-loading pattern).
+		// Divi uses: <link rel="preload" as="style" onload="this.rel='stylesheet'">
+		// If the resource loaded successfully, onload fires and rel becomes "stylesheet".
+		// If it failed (404), onload never fires and rel stays "preload" after window.load.
+		if (!failed) {
+			var preloads = document.querySelectorAll('link[as="style"]');
+			for (var j = 0; j < preloads.length; j++) {
+				if (preloads[j].rel === 'preload') {
+					failed = true;
+					break;
+				}
 			}
 		}
 

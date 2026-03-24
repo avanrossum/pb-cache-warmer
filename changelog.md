@@ -14,6 +14,14 @@ _Changes staged but not yet versioned._
 ---
 == Changelog ==
 
+= 0.9.8 =
+* Fix health check: also detect failed preloaded stylesheets (Divi Dynamic CSS
+  late-loading pattern). Divi loads some CSS as <link rel="preload" as="style"
+  onload="this.rel='stylesheet'">. If the CSS file is missing (404), the onload
+  never fires and rel stays "preload" after window.load. The previous check only
+  queried link[rel="stylesheet"], so it was blind to all preload-based CSS
+  failures — including Divi's late-ds.css files.
+
 = 0.9.7 =
 * Fix concurrency guard transient TTL: raised from 300s (5 min) to 3600s (1 hour).
   A 300-page site takes 15+ minutes to warm — the old TTL expired mid-run, allowing
