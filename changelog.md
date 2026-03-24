@@ -14,12 +14,14 @@ _Changes staged but not yet versioned._
 ---
 == Changelog ==
 
-= 0.9.5 =
-* Restructured changelog, updated stale initial testing information, moved out of readme.md
+= 0.9.6 =
 * Add concurrency guard to auto-warmup: skip if a run is already in progress
   (admin-triggered or prior cron). Prevents cache-purge events from stacking
   warmup runs on top of each other when et-cache is cold and CSS generation is
   slow — previously caused FPM pool saturation on sites with many pages.
+
+= 0.9.5 =
+* Restructured changelog, updated stale initial testing information, moved out of readme.md
 
 = 0.9.4 =
 * Update Plugin URI to mipyip.com/lab.
