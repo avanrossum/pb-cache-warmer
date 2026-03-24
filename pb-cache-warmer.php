@@ -20,11 +20,14 @@ define( 'PBCW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 require_once PBCW_PLUGIN_DIR . 'includes/class-warmer.php';
 require_once PBCW_PLUGIN_DIR . 'includes/class-scheduler.php';
 require_once PBCW_PLUGIN_DIR . 'includes/class-hooks.php';
+require_once PBCW_PLUGIN_DIR . 'includes/class-health-check.php';
 
 if ( is_admin() ) {
     require_once PBCW_PLUGIN_DIR . 'includes/class-admin.php';
     new PBCW_Admin();
 }
+
+new PBCW_Health_Check();
 
 new PBCW_Scheduler();
 new PBCW_Hooks();

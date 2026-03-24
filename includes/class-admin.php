@@ -40,6 +40,7 @@ class PBCW_Admin {
 
 		return [
 			'auto_warmup'   => ! empty( $input['auto_warmup'] ),
+			'health_check'  => ! empty( $input['health_check'] ),
 			'cron_schedule' => in_array( $input['cron_schedule'] ?? '', [ 'hourly', 'twicedaily', 'daily', 'weekly' ], true )
 			                       ? $input['cron_schedule']
 			                       : 'daily',
@@ -160,6 +161,17 @@ class PBCW_Admin {
 										<input type="checkbox" name="pbcw_settings[auto_warmup]" value="1" <?php checked( ! empty( $options['auto_warmup'] ) ); ?>>
 										<?php esc_html_e( 'Trigger warmup automatically when a supported caching plugin purges its cache', 'pb-cache-warmer' ); ?>
 									</label>
+								</td>
+							</tr>
+
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Client-side CSS health check', 'pb-cache-warmer' ); ?></th>
+								<td>
+									<label>
+										<input type="checkbox" name="pbcw_settings[health_check]" value="1" <?php checked( ! empty( $options['health_check'] ) ); ?>>
+										<?php esc_html_e( 'Auto-reload pages when a stylesheet fails to load', 'pb-cache-warmer' ); ?>
+									</label>
+									<p class="description"><?php esc_html_e( 'Injects a small script on every frontend page. If any stylesheet link returns a 404 or fails to load, the script notifies the server (which warms origin + CF edge for that page), then reloads after 3 seconds. A session guard prevents reload loops. Recommended when Cloudflare edge warming is active.', 'pb-cache-warmer' ); ?></p>
 								</td>
 							</tr>
 
