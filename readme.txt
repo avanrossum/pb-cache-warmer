@@ -6,8 +6,8 @@ Requires at least: 6.0
 Tested up to:      6.8
 Stable tag:        1.0.0
 Requires PHP:      8.0
-License:           GPL-2.0-or-later
-License URI:       https://www.gnu.org/licenses/gpl-2.0.html
+License:           GPL-3.0-or-later
+License URI:       https://www.gnu.org/licenses/gpl-3.0.html
 
 Proactively warms page builder CSS caches after purge events so users never land on an unstyled page.
 
