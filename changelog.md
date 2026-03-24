@@ -12,41 +12,31 @@ Versions correspond to the `Version` header in `pb-cache-warmer.php` and
 _Changes staged but not yet versioned._
 
 ---
+== Changelog ==
 
-## [1.0.0] — 2026-03-23
+= 0.9.5 =
+* Restructured changelog, updated stale initial testing information, moved out of readme.md
 
-### Added
-- Core warmup engine (`PBCW_Warmer`): collects published page/post URLs,
-  fetches each with a randomised cache-bypass query string (`?pbcw=<token>`),
-  stores last 10 run summaries in `wp_options`.
-- WP-Cron scheduler (`PBCW_Scheduler`): daily scheduled warmup at 03:00,
-  configurable to hourly / twice daily / weekly. Activates and deactivates
-  cleanly.
-- Cache-clear hook integrations (`PBCW_Hooks`): auto-warmup triggered by
-  WP Rocket, LiteSpeed Cache, W3 Total Cache, WP Super Cache, Autoptimize,
-  GridPane nginx-helper, Elementor CSS clear, Beaver Builder cache clear,
-  Bricks builder save, Oxygen, `switch_theme`, and `upgrader_process_complete`.
-- Divi `save_post` integration: single-post warmup 15s after Divi page save.
-  Gated to Divi-active sites by checking `defined('ET_BUILDER_VERSION')` at
-  call time (not at hook registration, to respect theme load order).
-- Admin settings page (Settings → Cache Warmer): auto-warmup toggle, cron
-  schedule selector, delay between requests, request timeout, post type
-  selection, excluded URL path list.
-- Manual "Warm Now" button with synchronous run and inline result summary.
-- Run history table showing last 10 runs (time, trigger, warmed count, errors,
-  duration). Errors expandable via `<details>`.
-- `pbcw_post_types` filter for programmatic post type extension.
-- `pbcw_sslverify` filter for self-signed origin cert environments.
-- Auto-warmup de-duplication: skips scheduling if an event is already queued
-  within the next 5 minutes.
-- GPL-2.0-or-later licence.
-- `readme.txt` in WordPress.org format.
-- `CLAUDE.md`, `architecture.md`, `roadmap.md`, `changelog.md` for agent
-  continuity and project documentation.
+= 0.9.4 =
+* Update Plugin URI to mipyip.com/lab.
 
-### Notes
-- Initial build. Not yet committed or released.
-- Known limitation: `*-late-ds.css` (Divi deferred-split CSS) is not generated
-  by the warmer's bypass-query-string requests. Mitigate at server level with
-  an nginx `try_files` fast-fail rule for `/wp-content/et-cache/`. See
-  `architecture.md` → Known Limitations.
+= 0.9.3 =
+* Fix auto-update breaking site: vendor/composer/ was excluded from git due to an overly broad .gitignore rule ("composer" matched vendor/composer/ at any depth). After each auto-update, WordPress replaced the plugin directory with the release zip (which lacked vendor/composer/), causing a fatal require_once error. Fixed by scoping the ignore to /composer and committing vendor/composer/.
+
+= 0.9.2 =
+* Version bump to verify auto-update via Plugin Update Checker.
+
+= 0.9.1 =
+* CF purge now targets only page-builder generated CSS (et-cache, Elementor, Beaver Builder, Bricks, Oxygen, Kadence) — WordPress core, plugin, and theme assets with stable ?ver= version strings are no longer purged, since they are covered by the long-TTL Cache Rule and will be naturally missed by Cloudflare when their URL changes. Extensible via pbcw_dynamic_css_paths filter.
+* Add Plugin Update Checker (PUC v5.6) for automatic updates via GitHub releases.
+* Add Settings link to plugin list entry in WP Admin.
+* Rename Settings menu entry to PB Cache Guard.
+
+= 0.9.0 =
+* Complete rewrite — Phase 2 now uses Cloudflare Cache Purge API instead of HTTP fetching through Cloudflare (which looped back to origin on most servers and never reached the CF edge)
+* Add Cloudflare Cache Rules management (versioned assets, 1-year TTL)
+* Add Phase 1b: server page cache purge in the heal path (nginx-helper, WP Rocket, LiteSpeed Cache, W3 Total Cache, WP Super Cache)
+* Add client-side CSS health check with automatic heal and reload
+* Add async "Warm Now" button with live progress display
+* Rename plugin to Page Builder Cache Guard
+* Version to 0.9.0 (beta) — CF Cache Rules and async run need production time
