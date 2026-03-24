@@ -41,7 +41,7 @@ class PBCW_Admin {
 	public function add_menu(): void {
 		add_options_page(
 			__( 'Page Builder Cache Guard', 'pb-cache-warmer' ),
-			__( 'Cache Warmer', 'pb-cache-warmer' ),
+			__( 'PB Cache Guard', 'pb-cache-warmer' ),
 			'manage_options',
 			self::MENU_SLUG,
 			[ $this, 'render_page' ]
