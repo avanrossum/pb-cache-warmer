@@ -6,8 +6,8 @@ If you run Divi, Elementor, Beaver Builder, Bricks, or Oxygen behind a server-si
 
 Page Builder Cache Guard fixes this with a three-phase approach: force-regenerate CSS on origin, purge stale server cache entries, and sync Cloudflare's edge via API. A client-side health check catches anything that slips through.
 
-![Settings — Schedule, post types, and warmup configuration](Settings%20-%20top%20half.png)
-![Settings — Cloudflare integration, health check, and run history](Settings%20-%20bottom%20half.png)
+![Settings — Schedule, post types, and warmup configuration](screenshots/settings-top.png)
+![Settings — Cloudflare integration, health check, and run history](screenshots/settings-bottom.png)
 
 ## The Problem
 
@@ -104,4 +104,4 @@ GPL-2.0-or-later
 
 ---
 
-Built by [Alex van Rossum](https://mipyip.com/about) at [MipYip](https://mipyip.com). More tools at [mipyip.com/lab](https://mipyip.com/lab).
+Built by [Alex van Rossum](https://mipyip.com/about) at [MipYip](https://mipyip.com). [Read the deep dive](https://mipyip.com/blog/page-builder-cache-guard) on why page builder sites break after cache purges. More tools at [mipyip.com/lab](https://mipyip.com/lab).
