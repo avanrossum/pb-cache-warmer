@@ -4,7 +4,7 @@ Contributors:      avanrossum
 Tags:              divi, elementor, beaver builder, cloudflare, cache, performance
 Requires at least: 6.0
 Tested up to:      6.8
-Stable tag:        0.9.2
+Stable tag:        0.9.3
 Requires PHP:      8.0
 License:           GPL-2.0-or-later
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -257,6 +257,13 @@ status every 2.5 seconds. The admin page never blocks regardless of how many
 URLs are queued.
 
 == Changelog ==
+
+= 0.9.3 =
+* Fix auto-update breaking site: vendor/composer/ was excluded from git due to
+  an overly broad .gitignore rule ("composer" matched vendor/composer/ at any
+  depth). After each auto-update, WordPress replaced the plugin directory with
+  the release zip (which lacked vendor/composer/), causing a fatal require_once
+  error. Fixed by scoping the ignore to /composer and committing vendor/composer/.
 
 = 0.9.2 =
 * Version bump to verify auto-update via Plugin Update Checker.
