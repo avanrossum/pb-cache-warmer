@@ -14,6 +14,14 @@ _Changes staged but not yet versioned._
 ---
 == Changelog ==
 
+= 0.9.7 =
+* Fix concurrency guard transient TTL: raised from 300s (5 min) to 3600s (1 hour).
+  A 300-page site takes 15+ minutes to warm — the old TTL expired mid-run, allowing
+  a second warmup to start while the first was still crawling, doubling FPM load.
+* Add concurrency guard to scheduled warmup (PBCW_Scheduler::run). The guard was
+  previously only in the auto-warmup path; scheduled and auto warmups could now
+  overlap.
+
 = 0.9.6 =
 * Add concurrency guard to auto-warmup: skip if a run is already in progress
   (admin-triggered or prior cron). Prevents cache-purge events from stacking

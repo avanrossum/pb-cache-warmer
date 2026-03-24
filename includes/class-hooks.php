@@ -115,7 +115,7 @@ class PBCW_Hooks {
 			return;
 		}
 
-		set_transient( 'pbcw_run_status', [ 'state' => 'running', 'started' => time() ], 300 );
+		set_transient( 'pbcw_run_status', [ 'state' => 'running', 'started' => time() ], 3600 );
 		$warmer = new PBCW_Warmer();
 		$warmer->run( 'auto (cache clear)' );
 		delete_transient( 'pbcw_run_status' );

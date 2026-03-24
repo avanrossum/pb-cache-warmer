@@ -18,8 +18,16 @@ class PBCW_Scheduler {
 
     /** Run called by WP-Cron. */
     public function run(): void {
+        // Bail if another run is already in progress (auto-warmup or admin-triggered).
+        $status = get_transient( 'pbcw_run_status' );
+        if ( $status && ( $status['state'] ?? '' ) === 'running' ) {
+            return;
+        }
+
+        set_transient( 'pbcw_run_status', [ 'state' => 'running', 'started' => time() ], 3600 );
         $warmer = new PBCW_Warmer();
         $warmer->run( 'scheduled' );
+        delete_transient( 'pbcw_run_status' );
     }
 
     /** Register the cron event on plugin activation. */
