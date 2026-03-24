@@ -106,8 +106,19 @@ class PBCW_Hooks {
 
 	/** Async: run full warmup (both phases). */
 	public function run_warmup(): void {
+		// Bail if another run is already in progress (admin-triggered or a prior
+		// auto-warmup that hasn't finished yet). This prevents a cache-purge event
+		// from stacking a warmup on top of one that's still crawling — which can
+		// saturate the FPM pool when et-cache is cold and CSS generation is slow.
+		$status = get_transient( 'pbcw_run_status' );
+		if ( $status && ( $status['state'] ?? '' ) === 'running' ) {
+			return;
+		}
+
+		set_transient( 'pbcw_run_status', [ 'state' => 'running', 'started' => time() ], 300 );
 		$warmer = new PBCW_Warmer();
 		$warmer->run( 'auto (cache clear)' );
+		delete_transient( 'pbcw_run_status' );
 	}
 
 	/** Async: warm a single post URL through both phases. */
