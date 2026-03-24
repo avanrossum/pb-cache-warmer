@@ -29,6 +29,7 @@ class PBCW_Health_Check {
 	public function __construct() {
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue' ] );
 		add_action( 'rest_api_init',      [ $this, 'register_routes' ] );
+		add_action( 'wp_footer',          [ $this, 'fix_divi_late_css_href' ], 999 );
 	}
 
 	/**
@@ -122,5 +123,42 @@ class PBCW_Health_Check {
 		$warmer->run_single( $url, 'health-check heal' );
 
 		return new WP_REST_Response( [ 'ok' => true, 'status' => 'healed' ], 200 );
+	}
+
+	/**
+	 * Fix Divi 4's late CSS href bug on every frontend page.
+	 *
+	 * Divi generates an inline script that loads late CSS files like this:
+	 *   var file = ["url1", "url2"];
+	 *   link.href = file;
+	 *
+	 * JavaScript coerces the array to a string via Array.toString(), producing
+	 * "url1,url2". The browser resolves this as a single malformed URL and
+	 * requests it — nginx returns 403 and both CSS files are never loaded.
+	 *
+	 * This footer script (priority 999, after Divi's inline script) finds the
+	 * element Divi created, splits its href on the comma boundary, and inserts
+	 * a separate <link> for each URL. Only runs when Divi 4 is active.
+	 */
+	public function fix_divi_late_css_href(): void {
+		if ( is_admin() || ! defined( 'ET_BUILDER_VERSION' ) ) {
+			return;
+		}
+		?>
+		<script>
+		(function() {
+			var el = document.getElementById('et-dynamic-late-css');
+			if (!el || !el.href || el.href.indexOf(',http') === -1) return;
+			var urls = el.href.split(/,(?=https?:\/\/)/);
+			el.href = urls[0];
+			for (var i = 1; i < urls.length; i++) {
+				var link  = document.createElement('link');
+				link.rel  = 'stylesheet';
+				link.href = urls[i];
+				el.parentNode.insertBefore(link, el.nextSibling);
+			}
+		}());
+		</script>
+		<?php
 	}
 }

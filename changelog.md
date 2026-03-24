@@ -14,6 +14,23 @@ _Changes staged but not yet versioned._
 ---
 == Changelog ==
 
+= 0.9.10 =
+* Fix Divi 4 late CSS href bug: Divi generates an inline script that assigns an
+  array of CSS URLs to link.href. JavaScript coerces the array to a comma-joined
+  string ("url1,url2"), which the browser requests as a single malformed URL
+  (nginx returns 403, both CSS files are never loaded). This is a Divi 4 bug
+  that predates this plugin. The plugin now injects a wp_footer script (priority
+  999, after Divi's inline script) that finds the malformed link, sets its href
+  to the first URL, and creates separate <link> elements for each remaining URL.
+  Runs on any Divi 4 site with the plugin active, regardless of health check
+  setting.
+
+= 0.9.9 =
+* Fix schedule_warmup() to also skip scheduling when a run is already in progress
+  (transient check). Previously only checked if an event was queued, not if one
+  was actively crawling — a page save during a warmup run would schedule a second
+  run to start 30s later, stacking load on the server.
+
 = 0.9.8 =
 * Fix health check: also detect failed preloaded stylesheets (Divi Dynamic CSS
   late-loading pattern). Divi loads some CSS as <link rel="preload" as="style"
