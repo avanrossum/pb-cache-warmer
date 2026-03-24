@@ -76,6 +76,13 @@ class PBCW_Hooks {
 			return;
 		}
 
+		// Don't schedule if a warmup is currently running — it's already crawling
+		// every URL, so a second run immediately after would be redundant.
+		$status = get_transient( 'pbcw_run_status' );
+		if ( $status && ( $status['state'] ?? '' ) === 'running' ) {
+			return;
+		}
+
 		$next = wp_next_scheduled( 'pbcw_async_warmup' );
 		if ( $next && $next < time() + 300 ) {
 			return;
