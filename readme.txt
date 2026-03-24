@@ -4,7 +4,7 @@ Contributors:      avanrossum
 Tags:              divi, elementor, beaver builder, cloudflare, cache, performance
 Requires at least: 6.0
 Tested up to:      6.8
-Stable tag:        0.9.1
+Stable tag:        0.9.2
 Requires PHP:      8.0
 License:           GPL-2.0-or-later
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -257,6 +257,9 @@ status every 2.5 seconds. The admin page never blocks regardless of how many
 URLs are queued.
 
 == Changelog ==
+
+= 0.9.2 =
+* Version bump to verify auto-update via Plugin Update Checker.
 
 = 0.9.1 =
 * CF purge now targets only page-builder generated CSS (et-cache, Elementor,
