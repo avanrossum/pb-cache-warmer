@@ -2,7 +2,12 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Admin settings page + manual warmup trigger.
+ * Admin settings page + async manual warmup trigger.
+ *
+ * The Warm Now button fires an AJAX request that validates the nonce, stores a
+ * one-time token, then POSTs a non-blocking loopback request to admin-ajax.php
+ * (?action=pbcw_do_run) using that token as auth. The loopback runs the warmup
+ * in the background while the JS polls a status endpoint every 2 seconds.
  */
 class PBCW_Admin {
 
@@ -14,8 +19,11 @@ class PBCW_Admin {
 		add_action( 'admin_menu',                    [ $this, 'add_menu' ] );
 		add_action( 'admin_init',                    [ $this, 'register_settings' ] );
 		add_action( 'admin_post_pbcw_save',          [ $this, 'save_settings' ] );
-		add_action( 'admin_post_pbcw_run',           [ $this, 'manual_run' ] );
 		add_action( 'admin_post_pbcw_detect_zone',   [ $this, 'detect_zone' ] );
+		add_action( 'wp_ajax_pbcw_start_run',        [ $this, 'start_run' ] );
+		add_action( 'wp_ajax_pbcw_do_run',           [ $this, 'do_run' ] );
+		add_action( 'wp_ajax_nopriv_pbcw_do_run',    [ $this, 'do_run' ] );
+		add_action( 'wp_ajax_pbcw_poll_status',      [ $this, 'poll_status' ] );
 	}
 
 	public function add_menu(): void {
@@ -67,19 +75,6 @@ class PBCW_Admin {
 		exit;
 	}
 
-	public function manual_run(): void {
-		check_admin_referer( self::NONCE_ACTION );
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( esc_html__( 'You do not have permission to perform this action.', 'pb-cache-warmer' ) );
-		}
-
-		$summary = ( new PBCW_Warmer() )->run( 'manual' );
-		set_transient( 'pbcw_last_manual_summary', $summary, 60 );
-
-		wp_redirect( admin_url( 'options-general.php?page=' . self::MENU_SLUG . '&ran=1' ) );
-		exit;
-	}
-
 	/** Auto-detect the CF Zone ID from the current site domain and save it. */
 	public function detect_zone(): void {
 		check_admin_referer( 'pbcw_detect_zone' );
@@ -103,18 +98,118 @@ class PBCW_Admin {
 		exit;
 	}
 
+	// ── Async run ───────────────────────────────────────────────────────────────
+
+	/**
+	 * AJAX: validate nonce + cap, issue a one-time token, fire background worker.
+	 * Returns immediately with { success: true }.
+	 */
+	public function start_run(): void {
+		check_ajax_referer( self::NONCE_ACTION );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( 'Forbidden', 403 );
+		}
+
+		// Clear any stale status from a previous run.
+		delete_transient( 'pbcw_run_token' );
+		delete_transient( 'pbcw_run_status' );
+
+		$token = wp_generate_password( 32, false );
+		set_transient( 'pbcw_run_token',  $token,                             120 );
+		set_transient( 'pbcw_run_status', [ 'state' => 'running', 'started' => time() ], 300 );
+
+		$this->fire_background_run( $token );
+
+		wp_send_json_success( [ 'started' => true ] );
+	}
+
+	/**
+	 * AJAX (no-priv): background worker. Authenticated by one-time token only.
+	 * PHP continues after the HTTP client closes the socket.
+	 */
+	public function do_run(): void {
+		$token = sanitize_text_field( $_POST['token'] ?? '' );
+		$saved = get_transient( 'pbcw_run_token' );
+
+		if ( ! $token || ! $saved || ! hash_equals( (string) $saved, $token ) ) {
+			wp_die( '', '', [ 'response' => 403 ] );
+		}
+		delete_transient( 'pbcw_run_token' );
+
+		// Let PHP keep running even if the HTTP client disconnects.
+		ignore_user_abort( true );
+		set_time_limit( 600 );
+
+		$summary = ( new PBCW_Warmer() )->run( 'manual' );
+
+		set_transient( 'pbcw_run_status', [
+			'state'   => 'done',
+			'summary' => $summary,
+		], 120 );
+
+		wp_die();
+	}
+
+	/** AJAX: return current run status as JSON. */
+	public function poll_status(): void {
+		check_ajax_referer( 'pbcw_poll' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( 'Forbidden', 403 );
+		}
+
+		$status = get_transient( 'pbcw_run_status' ) ?: [ 'state' => 'idle' ];
+
+		// If it's been running for more than 10 minutes, consider it stale.
+		if ( $status['state'] === 'running' && ( time() - ( $status['started'] ?? 0 ) ) > 600 ) {
+			$status['state'] = 'stale';
+		}
+
+		wp_send_json_success( $status );
+	}
+
+	/**
+	 * POST a non-blocking loopback request to admin-ajax.php to run the warmup.
+	 * Uses pbcw_origin_base when set so the request bypasses Cloudflare.
+	 */
+	private function fire_background_run( string $token ): void {
+		$origin_base = apply_filters( 'pbcw_origin_base', null );
+
+		if ( $origin_base ) {
+			$url     = rtrim( $origin_base, '/' ) . '/wp-admin/admin-ajax.php';
+			$headers = [ 'Host' => wp_parse_url( admin_url(), PHP_URL_HOST ) ];
+		} else {
+			$url     = admin_url( 'admin-ajax.php' );
+			$headers = [];
+		}
+
+		wp_remote_post( $url, [
+			'timeout'   => 0.01,
+			'blocking'  => false,
+			'sslverify' => false,
+			'headers'   => $headers,
+			'body'      => [
+				'action' => 'pbcw_do_run',
+				'token'  => $token,
+			],
+		] );
+	}
+
+	// ── Render ──────────────────────────────────────────────────────────────────
+
 	public function render_page(): void {
 		$options     = get_option( self::OPTIONS_KEY, [] );
 		$log         = PBCW_Warmer::get_log();
 		$warmer      = new PBCW_Warmer();
 		$url_count   = count( $warmer->get_urls() );
 		$next_cron   = wp_next_scheduled( PBCW_Scheduler::HOOK );
-		$summary     = get_transient( 'pbcw_last_manual_summary' );
 		$cf          = new PBCW_Cloudflare( $options['cf_token'] ?? '', $options['cf_zone_id'] ?? '' );
 		$origin_base = apply_filters( 'pbcw_origin_base', null );
 		$post_types  = get_post_types( [ 'public' => true ], 'objects' );
 		$saved_types = $options['post_types'] ?? [ 'page', 'post' ];
-		delete_transient( 'pbcw_last_manual_summary' );
+		$run_status  = get_transient( 'pbcw_run_status' ) ?: [ 'state' => 'idle' ];
+
+		$start_nonce = wp_create_nonce( self::NONCE_ACTION );
+		$poll_nonce  = wp_create_nonce( 'pbcw_poll' );
 		?>
 		<div class="wrap">
 			<h1><?php esc_html_e( 'Page Builder Cache Warmer', 'pb-cache-warmer' ); ?></h1>
@@ -129,39 +224,6 @@ class PBCW_Admin {
 
 			<?php if ( isset( $_GET['zone_not_found'] ) ) : ?>
 				<div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Zone ID not found. Check that your API token has Zone.Read permission and the site domain is in your Cloudflare account.', 'pb-cache-warmer' ); ?></p></div>
-			<?php endif; ?>
-
-			<?php if ( isset( $_GET['ran'] ) && $summary ) : ?>
-				<div class="notice notice-success is-dismissible">
-					<p>
-						<?php
-						printf(
-							/* translators: 1: warmed count, 2: total, 3: seconds */
-							esc_html__( 'Phase 1: %1$d / %2$d pages warmed in %3$ss.', 'pb-cache-warmer' ),
-							$summary['warmed'], $summary['urls'], $summary['duration']
-						);
-						if ( ! empty( $summary['errors'] ) ) {
-							echo ' ' . sprintf(
-								esc_html__( '%d errors — see log below.', 'pb-cache-warmer' ),
-								count( $summary['errors'] )
-							);
-						}
-						if ( ! empty( $summary['cf'] ) ) {
-							$cf_r = $summary['cf'];
-							echo '<br>';
-							if ( empty( $cf_r['errors'] ) ) {
-								printf(
-									/* translators: 1: pages purged, 2: CSS files purged */
-									esc_html__( 'CF purge: %1$d pages + %2$d CSS files.', 'pb-cache-warmer' ),
-									$cf_r['purged_pages'], $cf_r['purged_css']
-								);
-							} else {
-								esc_html_e( 'CF purge: failed — check token and Zone ID.', 'pb-cache-warmer' );
-							}
-						}
-						?>
-					</p>
-				</div>
 			<?php endif; ?>
 
 			<div style="display:flex; gap:2rem; align-items:flex-start;">
@@ -271,7 +333,7 @@ class PBCW_Admin {
 									<?php if ( ! empty( $options['cf_token'] ) ) : ?>
 										<span style="color:#0a7a0a; margin-left:.5rem;">&#10003; <?php esc_html_e( 'Token saved', 'pb-cache-warmer' ); ?></span>
 									<?php endif; ?>
-									<p class="description"><?php esc_html_e( 'Leave blank to keep the existing token. Clear and save to remove it.', 'pb-cache-warmer' ); ?></p>
+									<p class="description"><?php esc_html_e( 'Leave blank to keep the existing token.', 'pb-cache-warmer' ); ?></p>
 								</td>
 							</tr>
 
@@ -320,14 +382,11 @@ class PBCW_Admin {
 							<?php esc_html_e( 'Phase 1 (origin) only', 'pb-cache-warmer' ); ?>
 						<?php endif; ?>
 					</p>
-					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-						<?php wp_nonce_field( self::NONCE_ACTION ); ?>
-						<input type="hidden" name="action" value="pbcw_run">
-						<?php submit_button( __( 'Run Warmup', 'pb-cache-warmer' ), 'primary', 'submit', false ); ?>
-					</form>
-					<p class="description" style="margin-top:.5rem;">
-						<?php esc_html_e( 'Runs synchronously — page waits until complete.', 'pb-cache-warmer' ); ?>
-					</p>
+					<button id="pbcw-warm-btn" class="button button-primary"
+						<?php echo ( $run_status['state'] === 'running' ) ? 'disabled' : ''; ?>>
+						<?php esc_html_e( 'Run Warmup', 'pb-cache-warmer' ); ?>
+					</button>
+					<div id="pbcw-warm-status" style="margin-top:.75rem; font-size:13px;"></div>
 				</div>
 
 			</div>
@@ -359,7 +418,6 @@ class PBCW_Admin {
 								<td>
 									<?php if ( is_array( $cf_entry ) && empty( $cf_entry['errors'] ) ) : ?>
 										<?php printf(
-											/* translators: 1: pages, 2: CSS */
 											esc_html__( '%1$d pg + %2$d css', 'pb-cache-warmer' ),
 											$cf_entry['purged_pages'], $cf_entry['purged_css']
 										); ?>
@@ -395,6 +453,110 @@ class PBCW_Admin {
 			<?php endif; ?>
 
 		</div>
+
+		<script>
+		(function () {
+			var btn        = document.getElementById('pbcw-warm-btn');
+			var statusDiv  = document.getElementById('pbcw-warm-status');
+			var pollTimer  = null;
+			var startNonce = <?php echo wp_json_encode( $start_nonce ); ?>;
+			var pollNonce  = <?php echo wp_json_encode( $poll_nonce ); ?>;
+			var ajaxUrl    = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+
+			<?php if ( $run_status['state'] === 'running' ) : ?>
+			// Run was already in progress when the page loaded.
+			startPolling();
+			<?php endif; ?>
+
+			btn.addEventListener('click', function () {
+				btn.disabled = true;
+				showSpinner('Starting\u2026');
+
+				post(ajaxUrl, { action: 'pbcw_start_run', _ajax_nonce: startNonce })
+					.then(function (r) {
+						if (r && r.success) {
+							startPolling();
+						} else {
+							showError('Could not start warmup.');
+							btn.disabled = false;
+						}
+					})
+					.catch(function () {
+						showError('Request failed.');
+						btn.disabled = false;
+					});
+			});
+
+			function startPolling() {
+				btn.disabled = true;
+				showSpinner('Running\u2026');
+				pollTimer = setInterval(poll, 2500);
+			}
+
+			function poll() {
+				post(ajaxUrl, { action: 'pbcw_poll_status', _ajax_nonce: pollNonce })
+					.then(function (r) {
+						if (!r || !r.success) return;
+						var s = r.data;
+
+						if (s.state === 'done') {
+							clearInterval(pollTimer);
+							btn.disabled = false;
+							showResult(s.summary);
+							// Reload the history table without a full page refresh.
+							reloadLog();
+						} else if (s.state === 'stale') {
+							clearInterval(pollTimer);
+							btn.disabled = false;
+							showError('Warmup timed out or the background request was blocked. Try again.');
+						}
+					})
+					.catch(function () { /* keep polling */ });
+			}
+
+			function showSpinner(msg) {
+				statusDiv.innerHTML =
+					'<span class="spinner is-active" style="float:none;vertical-align:middle;margin:-3px 4px 0 0;"></span>' +
+					escHtml(msg);
+			}
+
+			function showResult(sum) {
+				var msg = 'Phase 1: ' + sum.warmed + '\u202f/\u202f' + sum.urls + ' pages (' + sum.duration + 's).';
+				if (sum.cf) {
+					if (!sum.cf.errors.length) {
+						msg += ' CF purge: ' + sum.cf.purged_pages + '\u202fpg\u202f+\u202f' + sum.cf.purged_css + '\u202fcss.';
+					} else {
+						msg += ' CF purge failed \u2014 check token and Zone ID.';
+					}
+				}
+				statusDiv.innerHTML = '<span style="color:#0a7a0a;">\u2713</span> ' + escHtml(msg);
+			}
+
+			function showError(msg) {
+				statusDiv.innerHTML = '<span style="color:#b32d2e;">' + escHtml(msg) + '</span>';
+			}
+
+			function reloadLog() {
+				// Soft-reload just the run history by refreshing the page after a
+				// short delay so the user can read the inline result first.
+				setTimeout(function () { window.location.reload(); }, 3000);
+			}
+
+			function post(url, data) {
+				var fd = new FormData();
+				Object.keys(data).forEach(function (k) { fd.append(k, data[k]); });
+				return fetch(url, { method: 'POST', body: fd }).then(function (r) { return r.json(); });
+			}
+
+			function escHtml(s) {
+				return String(s)
+					.replace(/&/g, '&amp;')
+					.replace(/</g, '&lt;')
+					.replace(/>/g, '&gt;')
+					.replace(/"/g, '&quot;');
+			}
+		}());
+		</script>
 		<?php
 	}
 }
