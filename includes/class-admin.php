@@ -20,6 +20,8 @@ class PBCW_Admin {
 		add_action( 'admin_init',                    [ $this, 'register_settings' ] );
 		add_action( 'admin_post_pbcw_save',          [ $this, 'save_settings' ] );
 		add_action( 'admin_post_pbcw_detect_zone',   [ $this, 'detect_zone' ] );
+		add_action( 'admin_post_pbcw_apply_rule',    [ $this, 'apply_rule' ] );
+		add_action( 'admin_post_pbcw_remove_rule',   [ $this, 'remove_rule' ] );
 		add_action( 'wp_ajax_pbcw_start_run',        [ $this, 'start_run' ] );
 		add_action( 'wp_ajax_pbcw_do_run',           [ $this, 'do_run' ] );
 		add_action( 'wp_ajax_nopriv_pbcw_do_run',    [ $this, 'do_run' ] );
@@ -28,7 +30,7 @@ class PBCW_Admin {
 
 	public function add_menu(): void {
 		add_options_page(
-			__( 'Page Builder Cache Warmer', 'pb-cache-warmer' ),
+			__( 'Page Builder Cache Guard', 'pb-cache-warmer' ),
 			__( 'Cache Warmer', 'pb-cache-warmer' ),
 			'manage_options',
 			self::MENU_SLUG,
@@ -95,6 +97,40 @@ class PBCW_Admin {
 		}
 
 		wp_redirect( admin_url( 'options-general.php?page=' . self::MENU_SLUG . '&' . $status . '=1' ) );
+		exit;
+	}
+
+	// ── Cache Rules ─────────────────────────────────────────────────────────────
+
+	/** Apply the plugin's Cache Rule to the CF zone. */
+	public function apply_rule(): void {
+		check_admin_referer( 'pbcw_apply_rule' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to perform this action.', 'pb-cache-warmer' ) );
+		}
+
+		$options = get_option( self::OPTIONS_KEY, [] );
+		$cf      = new PBCW_Cloudflare( $options['cf_token'] ?? '', $options['cf_zone_id'] ?? '' );
+		$result  = $cf->apply_cache_rule();
+
+		$param = $result['success'] ? 'rule_applied=1' : ( 'rule_error=' . rawurlencode( $result['error'] ) );
+		wp_redirect( admin_url( 'options-general.php?page=' . self::MENU_SLUG . '&' . $param ) );
+		exit;
+	}
+
+	/** Remove the plugin's Cache Rule from the CF zone. */
+	public function remove_rule(): void {
+		check_admin_referer( 'pbcw_remove_rule' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to perform this action.', 'pb-cache-warmer' ) );
+		}
+
+		$options = get_option( self::OPTIONS_KEY, [] );
+		$cf      = new PBCW_Cloudflare( $options['cf_token'] ?? '', $options['cf_zone_id'] ?? '' );
+		$result  = $cf->remove_cache_rule();
+
+		$param = $result['success'] ? 'rule_removed=1' : ( 'rule_error=' . rawurlencode( $result['error'] ) );
+		wp_redirect( admin_url( 'options-general.php?page=' . self::MENU_SLUG . '&' . $param ) );
 		exit;
 	}
 
@@ -208,11 +244,12 @@ class PBCW_Admin {
 		$saved_types = $options['post_types'] ?? [ 'page', 'post' ];
 		$run_status  = get_transient( 'pbcw_run_status' ) ?: [ 'state' => 'idle' ];
 
-		$start_nonce = wp_create_nonce( self::NONCE_ACTION );
-		$poll_nonce  = wp_create_nonce( 'pbcw_poll' );
+		$start_nonce  = wp_create_nonce( self::NONCE_ACTION );
+		$poll_nonce   = wp_create_nonce( 'pbcw_poll' );
+		$rule_status  = $cf->is_configured() ? $cf->get_cache_rule_status() : null;
 		?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'Page Builder Cache Warmer', 'pb-cache-warmer' ); ?></h1>
+			<h1><?php esc_html_e( 'Page Builder Cache Guard', 'pb-cache-warmer' ); ?></h1>
 
 			<?php if ( isset( $_GET['saved'] ) ) : ?>
 				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Settings saved.', 'pb-cache-warmer' ); ?></p></div>
@@ -223,7 +260,19 @@ class PBCW_Admin {
 			<?php endif; ?>
 
 			<?php if ( isset( $_GET['zone_not_found'] ) ) : ?>
-				<div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Zone ID not found. Check that your API token has Zone.Read permission and the site domain is in your Cloudflare account.', 'pb-cache-warmer' ); ?></p></div>
+				<div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Zone ID not found. Check that your API token has Zone.Zone (read) permission and the site domain is in your Cloudflare account.', 'pb-cache-warmer' ); ?></p></div>
+			<?php endif; ?>
+
+			<?php if ( isset( $_GET['rule_applied'] ) ) : ?>
+				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Cache Rule applied. Versioned assets (CSS/JS with ?ver=) will now be cached at the CF edge for 1 year.', 'pb-cache-warmer' ); ?></p></div>
+			<?php endif; ?>
+
+			<?php if ( isset( $_GET['rule_removed'] ) ) : ?>
+				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Cache Rule removed.', 'pb-cache-warmer' ); ?></p></div>
+			<?php endif; ?>
+
+			<?php if ( isset( $_GET['rule_error'] ) ) : ?>
+				<div class="notice notice-error is-dismissible"><p><?php printf( esc_html__( 'Cache Rule error: %s', 'pb-cache-warmer' ), esc_html( urldecode( $_GET['rule_error'] ) ) ); ?></p></div>
 			<?php endif; ?>
 
 			<div style="display:flex; gap:2rem; align-items:flex-start;">
@@ -363,6 +412,49 @@ class PBCW_Admin {
 
 						<?php submit_button( __( 'Save Settings', 'pb-cache-warmer' ) ); ?>
 					</form>
+
+					<?php if ( $cf->is_configured() ) : ?>
+					<h2><?php esc_html_e( 'CF Cache Rule — Versioned Assets', 'pb-cache-warmer' ); ?></h2>
+					<p class="description" style="margin-bottom:1rem;">
+						<?php esc_html_e( 'Sets a 1-year edge + browser TTL in Cloudflare for any CSS or JS file with a ?ver= query string. WordPress and page builders append ?ver= to all enqueued assets — the URL changes when the file changes, so a long TTL is safe. This prevents CF from ever needing to fetch these files from origin during normal operation.', 'pb-cache-warmer' ); ?>
+					</p>
+
+					<?php if ( ! empty( $rule_status['error'] ) && $rule_status['error'] !== 'not_configured' ) : ?>
+						<div class="notice notice-warning inline"><p>
+							<?php printf( esc_html__( 'Could not read CF ruleset: %s — check that your token has Zone.Cache Settings permission.', 'pb-cache-warmer' ), '<code>' . esc_html( $rule_status['error'] ) . '</code>' ); ?>
+						</p></div>
+					<?php elseif ( $rule_status['active'] ) : ?>
+						<p><span style="color:#0a7a0a; font-weight:600;">&#10003; <?php esc_html_e( 'Rule is active', 'pb-cache-warmer' ); ?></span>
+						<?php if ( $rule_status['total_rules'] > 1 ) : ?>
+							&mdash; <?php printf( esc_html__( '%d other rule(s) in this zone will be preserved.', 'pb-cache-warmer' ), $rule_status['total_rules'] - 1 ); ?>
+						<?php endif; ?>
+						</p>
+						<p style="background:#f9f9f9; border:1px solid #ddd; padding:.6rem .8rem; font-family:monospace; font-size:12px; max-width:700px;">
+							(ends_with(.css) or ends_with(.js)) and uri.query contains "ver=" &rarr; edge TTL 1 year, browser TTL 1 year
+						</p>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+							<?php wp_nonce_field( 'pbcw_remove_rule' ); ?>
+							<input type="hidden" name="action" value="pbcw_remove_rule">
+							<?php submit_button( __( 'Remove Rule', 'pb-cache-warmer' ), 'delete', 'submit', false ); ?>
+						</form>
+					<?php else : ?>
+						<p style="color:#666;"><?php esc_html_e( 'No rule active. The rule below will be added to your CF zone\'s Cache Rules:', 'pb-cache-warmer' ); ?></p>
+						<p style="background:#f9f9f9; border:1px solid #ddd; padding:.6rem .8rem; font-family:monospace; font-size:12px; max-width:700px;">
+							(ends_with(.css) or ends_with(.js)) and uri.query contains "ver=" &rarr; edge TTL 1 year, browser TTL 1 year
+						</p>
+						<?php if ( $rule_status['total_rules'] > 0 ) : ?>
+							<p class="description" style="color:#666;">
+								<?php printf( esc_html__( 'Your zone already has %d Cache Rule(s). This will be appended — existing rules will not be changed.', 'pb-cache-warmer' ), $rule_status['total_rules'] ); ?>
+							</p>
+						<?php endif; ?>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+							<?php wp_nonce_field( 'pbcw_apply_rule' ); ?>
+							<input type="hidden" name="action" value="pbcw_apply_rule">
+							<?php submit_button( __( 'Apply Rule', 'pb-cache-warmer' ), 'primary', 'submit', false ); ?>
+						</form>
+					<?php endif; ?>
+					<?php endif; // cf->is_configured() ?>
+
 
 					<?php if ( $origin_base ) : ?>
 						<p style="margin-top:1rem; color:#666; font-size:12px;">
