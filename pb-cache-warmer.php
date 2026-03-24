@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Page Builder Cache Guard
- * Plugin URI:  https://github.com/avanrossum/pb-cache-warmer
+ * Plugin URI:  https://mipyip.com/lab
  * Description: Prevents missing page-builder CSS (Divi, Elementor, Beaver Builder, Bricks, etc.) by warming the origin after cache purge events and optionally syncing Cloudflare's edge cache via the CF API.
  * Version:     0.9.3
  * Author:      Alex van Rossum / MipYip
