@@ -15,6 +15,17 @@
 defined( 'ABSPATH' ) || exit;
 
 define( 'PBCW_VERSION',    '0.9.0' );
+
+// Auto-updates via GitHub releases.
+if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
+	require_once __DIR__ . '/vendor/autoload.php';
+	$pbcw_updater = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+		'https://github.com/avanrossum/pb-cache-warmer/',
+		__FILE__,
+		'pb-cache-warmer'
+	);
+	$pbcw_updater->setBranch( 'main' );
+}
 define( 'PBCW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'PBCW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 

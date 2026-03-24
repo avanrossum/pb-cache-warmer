@@ -227,7 +227,12 @@ class PBCW_Warmer {
 				continue;
 			}
 			foreach ( $this->extract_css_urls( $html, $base_host ) as $css_url ) {
-				$css_urls[ $css_url ] = true;
+				// Only purge page-builder generated CSS — not stable versioned
+				// WordPress/plugin/theme assets, which are covered by the long-TTL
+				// Cache Rule and will be naturally missed by CF when their URL changes.
+				if ( $this->is_dynamic_css( $css_url ) ) {
+					$css_urls[ $css_url ] = true;
+				}
 			}
 		}
 
@@ -316,6 +321,35 @@ class PBCW_Warmer {
 	}
 
 	// ── Helpers ────────────────────────────────────────────────────────────────
+
+	/**
+	 * Return true if a CSS URL is page-builder generated and should be purged.
+	 *
+	 * Page builders write CSS to known upload/cache directories. Standard WordPress
+	 * plugin, theme, and core CSS uses stable ?ver=X.X.X versioning — when those
+	 * files change, their URL changes, so Cloudflare misses them naturally. We
+	 * only need to explicitly purge the dynamic files that Phase 1 just regenerated.
+	 *
+	 * Extend via the pbcw_dynamic_css_paths filter.
+	 */
+	private function is_dynamic_css( string $url ): bool {
+		$paths = apply_filters( 'pbcw_dynamic_css_paths', [
+			'/wp-content/et-cache/',                   // Divi 4
+			'/wp-content/uploads/elementor/css/',      // Elementor
+			'/wp-content/uploads/bb-plugin/cache/',    // Beaver Builder
+			'/wp-content/uploads/bricks/',             // Bricks
+			'/wp-content/uploads/oxygen/',             // Oxygen
+			'/wp-content/uploads/kadence-blocks/',     // Kadence
+		] );
+
+		foreach ( $paths as $path ) {
+			if ( str_contains( $url, $path ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
 
 	/**
 	 * Purge the server-side page cache entry for a single URL.
