@@ -152,9 +152,24 @@ class PBCW_Warmer {
 	}
 
 	/**
-	 * Detect whether the site is fronted by Cloudflare by checking for the
-	 * cf-ray response header on a HEAD request to the home URL.
-	 * Result cached in a transient for 1 hour to avoid repeated HTTP checks.
+	 * Detect whether the site is fronted by Cloudflare.
+	 *
+	 * Two-signal approach:
+	 *
+	 * 1. Inbound request headers — if the current PHP request arrived through
+	 *    Cloudflare (e.g. a browser or admin page load), CF injects
+	 *    HTTP_CF_RAY and HTTP_CF_CONNECTING_IP into $_SERVER. This is the
+	 *    most reliable signal and works even when the server routes outbound
+	 *    requests to itself (bypassing CF internally).
+	 *
+	 * 2. Outbound HEAD request — fallback for CLI/cron contexts where there is
+	 *    no incoming request. Makes a HEAD request to home_url() and checks for
+	 *    the cf-ray response header. Fails silently if the server routes back
+	 *    to itself without going through CF (returns false in that case).
+	 *
+	 * Result cached in a transient for 1 hour. Cleared on settings save.
+	 * Once detected via signal 1 (admin page load), the cached true result
+	 * covers subsequent cron/background runs.
 	 */
 	public function detect_cloudflare(): bool {
 		$cached = get_transient( 'pbcw_cf_detected' );
@@ -162,6 +177,13 @@ class PBCW_Warmer {
 			return (bool) $cached;
 		}
 
+		// Signal 1: CF forwarding headers on the current inbound request.
+		if ( ! empty( $_SERVER['HTTP_CF_RAY'] ) || ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) {
+			set_transient( 'pbcw_cf_detected', 1, HOUR_IN_SECONDS );
+			return true;
+		}
+
+		// Signal 2: outbound HEAD request (may not work if server loops back).
 		$response = wp_remote_head( home_url( '/' ), [
 			'timeout'    => 10,
 			'user-agent' => $this->phase2_ua(),
