@@ -1,0 +1,38 @@
+<?php
+/**
+ * Plugin Name: Page Builder Cache Warmer
+ * Plugin URI:  https://github.com/avanrossum/pb-cache-warmer
+ * Description: Proactively warms page builder CSS caches (Divi, Elementor, Beaver Builder, Bricks, etc.) by crawling published pages after cache clear events. Prevents missing CSS on first load after cache purge.
+ * Version:     1.0.0
+ * Author:      Alex van Rossum
+ * License:     GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: pb-cache-warmer
+ * Domain Path: /languages
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+define( 'PBCW_VERSION',    '1.0.0' );
+define( 'PBCW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'PBCW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+
+require_once PBCW_PLUGIN_DIR . 'includes/class-warmer.php';
+require_once PBCW_PLUGIN_DIR . 'includes/class-scheduler.php';
+require_once PBCW_PLUGIN_DIR . 'includes/class-hooks.php';
+
+if ( is_admin() ) {
+    require_once PBCW_PLUGIN_DIR . 'includes/class-admin.php';
+    new PBCW_Admin();
+}
+
+new PBCW_Scheduler();
+new PBCW_Hooks();
+
+add_action( 'init', 'pbcw_load_textdomain' );
+function pbcw_load_textdomain(): void {
+    load_plugin_textdomain( 'pb-cache-warmer', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+}
+
+register_activation_hook( __FILE__, [ 'PBCW_Scheduler', 'activate' ] );
+register_deactivation_hook( __FILE__, [ 'PBCW_Scheduler', 'deactivate' ] );
