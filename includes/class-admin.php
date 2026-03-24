@@ -16,6 +16,7 @@ class PBCW_Admin {
 	const NONCE_ACTION = 'pbcw_warmup_now';
 
 	public function __construct() {
+		add_filter( 'plugin_action_links_pb-cache-warmer/pb-cache-warmer.php', [ $this, 'action_links' ] );
 		add_action( 'admin_menu',                    [ $this, 'add_menu' ] );
 		add_action( 'admin_init',                    [ $this, 'register_settings' ] );
 		add_action( 'admin_post_pbcw_save',          [ $this, 'save_settings' ] );
@@ -26,6 +27,15 @@ class PBCW_Admin {
 		add_action( 'wp_ajax_pbcw_do_run',           [ $this, 'do_run' ] );
 		add_action( 'wp_ajax_nopriv_pbcw_do_run',    [ $this, 'do_run' ] );
 		add_action( 'wp_ajax_pbcw_poll_status',      [ $this, 'poll_status' ] );
+	}
+
+	public function action_links( array $links ): array {
+		array_unshift( $links, sprintf(
+			'<a href="%s">%s</a>',
+			esc_url( admin_url( 'options-general.php?page=' . self::MENU_SLUG ) ),
+			esc_html__( 'Settings', 'pb-cache-warmer' )
+		) );
+		return $links;
 	}
 
 	public function add_menu(): void {
