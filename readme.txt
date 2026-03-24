@@ -4,7 +4,7 @@ Contributors:      avanrossum
 Tags:              divi, elementor, beaver builder, cloudflare, cache, performance
 Requires at least: 6.0
 Tested up to:      6.8
-Stable tag:        0.9.0
+Stable tag:        0.9.1
 Requires PHP:      8.0
 License:           GPL-2.0-or-later
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -257,6 +257,16 @@ status every 2.5 seconds. The admin page never blocks regardless of how many
 URLs are queued.
 
 == Changelog ==
+
+= 0.9.1 =
+* CF purge now targets only page-builder generated CSS (et-cache, Elementor,
+  Beaver Builder, Bricks, Oxygen, Kadence) — WordPress core, plugin, and theme
+  assets with stable ?ver= version strings are no longer purged, since they are
+  covered by the long-TTL Cache Rule and will be naturally missed by Cloudflare
+  when their URL changes. Extensible via pbcw_dynamic_css_paths filter.
+* Add Plugin Update Checker (PUC v5.6) for automatic updates via GitHub releases.
+* Add Settings link to plugin list entry in WP Admin.
+* Rename Settings menu entry to PB Cache Guard.
 
 = 0.9.0 =
 * Complete rewrite — Phase 2 now uses Cloudflare Cache Purge API instead of
