@@ -14,6 +14,19 @@ _Changes staged but not yet versioned._
 ---
 == Changelog ==
 
+= 0.9.11 =
+* Fix FPM saturation when health-check heals and a full warmup run overlap: heal
+  endpoint now checks the pbcw_run_status transient and returns "warmup_running"
+  immediately if a warmup is in progress, rather than running a concurrent
+  run_single that adds to an already-loaded FPM pool.
+* Fix health-check.js false-positive preload detection: preloaded stylesheets
+  (<link rel="preload" as="style">) do not block window.load in any major browser,
+  so a slow-loading but ultimately successful preload was indistinguishable from a
+  failed one at check time. Added a 3-second delay after window.load before
+  inspecting link[as="style"] rel values — enough time for in-flight preloads to
+  complete and trigger their onload callbacks. Genuinely failed preloads (404) keep
+  rel="preload" indefinitely and are still caught.
+
 = 0.9.10 =
 * Fix Divi 4 late CSS href bug: Divi generates an inline script that assigns an
   array of CSS URLs to link.href. JavaScript coerces the array to a comma-joined

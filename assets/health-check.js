@@ -58,10 +58,18 @@
 		});
 	}
 
-	// Run after all resources have had a chance to load.
+	// Preloaded stylesheets (<link rel="preload" as="style">) do not block window.load
+	// in any major browser. Checking at load-time causes false positives — a slow
+	// preload still in-flight looks identical to a failed one. Delay 3 seconds so
+	// in-flight preloads have time to complete and trigger their onload callbacks
+	// before we inspect rel. Genuinely failed preloads (404) stay "preload" indefinitely.
+	function runDelayed() {
+		setTimeout(run, 3000);
+	}
+
 	if (document.readyState === 'complete') {
-		run();
+		runDelayed();
 	} else {
-		window.addEventListener('load', run);
+		window.addEventListener('load', runDelayed);
 	}
 }());

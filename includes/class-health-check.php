@@ -112,6 +112,12 @@ class PBCW_Health_Check {
 			return new WP_REST_Response( [ 'ok' => false, 'error' => 'url_mismatch' ], 400 );
 		}
 
+		// Skip heal if a full-site warmup is already running — it will cover this URL.
+		$run_status = get_transient( 'pbcw_run_status' );
+		if ( $run_status && ( $run_status['state'] ?? '' ) === 'running' ) {
+			return new WP_REST_Response( [ 'ok' => true, 'status' => 'warmup_running' ], 200 );
+		}
+
 		// Rate limit: one heal per URL per 60 seconds across all visitors.
 		$lock = 'pbcw_heal_' . md5( $url );
 		if ( get_transient( $lock ) ) {
