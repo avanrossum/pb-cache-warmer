@@ -1,4 +1,6 @@
 .DS_Store
 architecture.md
 roadmap.md
-composer
+/composer
+/composer.phar
+composer.lock
